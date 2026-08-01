@@ -12,6 +12,59 @@ struct Variable {
     Value value;
 };
 
+class FastScanner {
+public:
+    FastScanner() {
+        ios::sync_with_stdio(false);
+        cin.tie(nullptr);
+        data.assign(istreambuf_iterator<char>(cin), istreambuf_iterator<char>());
+    }
+
+    bool readInt(int &value) {
+        skipSpaces();
+        if (index >= data.size()) return false;
+        bool negative = false;
+        if (data[index] == '+' || data[index] == '-') {
+            negative = data[index] == '-';
+            ++index;
+        }
+        long long result = 0;
+        while (index < data.size() && isdigit(static_cast<unsigned char>(data[index]))) {
+            result = result * 10 + (data[index] - '0');
+            ++index;
+        }
+        value = negative ? -static_cast<int>(result) : static_cast<int>(result);
+        return true;
+    }
+
+    bool readToken(string &token) {
+        skipSpaces();
+        if (index >= data.size()) return false;
+        if (data[index] == '"') {
+            token.clear();
+            token.push_back(data[index++]);
+            while (index < data.size()) {
+                char ch = data[index++];
+                token.push_back(ch);
+                if (ch == '"') break;
+            }
+            return true;
+        }
+        size_t start = index;
+        while (index < data.size() && !isspace(static_cast<unsigned char>(data[index]))) ++index;
+        token.assign(data.data() + start, index - start);
+        return true;
+    }
+
+private:
+    vector<char> data;
+    size_t index = 0;
+
+    void skipSpaces() {
+        while (index < data.size() && isspace(static_cast<unsigned char>(data[index]))) ++index;
+    }
+};
+
 static inline bool parseIntStrict(const string &token, long long &value) {
     if (token.empty()) return false;
     size_t index = 0;
@@ -24,41 +77,41 @@ static inline bool parseIntStrict(const string &token, long long &value) {
     long long result = 0;
     for (; index < token.size(); ++index) {
         if (!isdigit(static_cast<unsigned char>(token[index]))) return false;
-        int digit = token[index] - '0';
-        result = result * 10 + digit;
+        result = result * 10 + (token[index] - '0');
     }
     value = negative ? -result : result;
     return true;
 }
 
 static inline bool parseQuotedString(const string &token, string &value) {
-    if (token.size() < 2 || token.front() != '"' || token.back() != '"') {
-        return false;
-    }
+    if (token.size() < 2 || token.front() != '"' || token.back() != '"') return false;
     value = token.substr(1, token.size() - 2);
     return true;
 }
 
 int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
+    FastScanner scanner;
 
     int n;
-    if (!(cin >> n)) return 0;
+    if (!scanner.readInt(n)) return 0;
 
     vector<unordered_map<string, Variable>> scopes(1);
-    string line;
-    getline(cin, line);
+    string op;
+    string token;
+
+    auto findVar = [&](const string &name) -> Variable* {
+        for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
+            auto found = it->find(name);
+            if (found != it->end()) return &found->second;
+        }
+        return nullptr;
+    };
+
+    string output;
+    output.reserve(static_cast<size_t>(n) * 8);
 
     for (int i = 0; i < n; ++i) {
-        getline(cin, line);
-        if (line.empty()) {
-            --i;
-            continue;
-        }
-        stringstream ss(line);
-        string op;
-        ss >> op;
+        scanner.readToken(op);
 
         if (op == "Indent") {
             scopes.emplace_back();
@@ -68,80 +121,74 @@ int main() {
             if (scopes.size() > 1) {
                 scopes.pop_back();
             } else {
-                cout << "Invalid operation\n";
+                output += "Invalid operation\n";
             }
             continue;
         }
 
-        auto findVar = [&](const string &name) -> Variable* {
-            for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
-                auto found = it->find(name);
-                if (found != it->end()) return &found->second;
-            }
-            return nullptr;
-        };
-
         if (op == "Declare") {
             string type, name;
-            ss >> type >> name;
-            string valueToken;
-            if (type == "string") {
-                getline(ss >> ws, valueToken);
-            } else {
-                ss >> valueToken;
-            }
+            scanner.readToken(type);
+            scanner.readToken(name);
+            scanner.readToken(token);
             Variable variable;
             variable.type = type;
             if (type == "int") {
                 long long number;
-                if (!parseIntStrict(valueToken, number)) {
-                    cout << "Invalid operation\n";
+                if (!parseIntStrict(token, number)) {
+                    output += "Invalid operation\n";
                     continue;
                 }
                 variable.value.isString = false;
                 variable.value.intValue = number;
             } else if (type == "string") {
-                if (!parseQuotedString(valueToken, variable.value.stringValue)) {
-                    cout << "Invalid operation\n";
+                if (!parseQuotedString(token, variable.value.stringValue)) {
+                    output += "Invalid operation\n";
                     continue;
                 }
                 variable.value.isString = true;
             } else {
-                cout << "Invalid operation\n";
+                output += "Invalid operation\n";
                 continue;
             }
             auto &current = scopes.back();
             if (current.find(name) != current.end()) {
-                cout << "Invalid operation\n";
+                output += "Invalid operation\n";
                 continue;
             }
-            current[name] = std::move(variable);
+            current.emplace(std::move(name), std::move(variable));
             continue;
         }
 
         if (op == "Print") {
             string name;
-            ss >> name;
+            scanner.readToken(name);
             Variable *variable = findVar(name);
             if (!variable) {
-                cout << "Invalid operation\n";
+                output += "Invalid operation\n";
                 continue;
             }
-            cout << name << ":";
-            if (variable->type == "int") cout << variable->value.intValue;
-            else cout << variable->value.stringValue;
-            cout << '\n';
+            output += name;
+            output.push_back(':');
+            if (variable->type == "int") {
+                output += to_string(variable->value.intValue);
+            } else {
+                output += variable->value.stringValue;
+            }
+            output.push_back('\n');
             continue;
         }
 
         if (op == "Add") {
             string a, b, c;
-            ss >> a >> b >> c;
+            scanner.readToken(a);
+            scanner.readToken(b);
+            scanner.readToken(c);
             Variable *result = findVar(a);
             Variable *lhs = findVar(b);
             Variable *rhs = findVar(c);
             if (!result || !lhs || !rhs || result->type != lhs->type || lhs->type != rhs->type) {
-                cout << "Invalid operation\n";
+                output += "Invalid operation\n";
                 continue;
             }
             if (result->type == "int") {
@@ -156,26 +203,25 @@ int main() {
 
         if (op == "SelfAdd") {
             string name;
-            ss >> name;
-            string valueToken;
-            getline(ss >> ws, valueToken);
+            scanner.readToken(name);
+            scanner.readToken(token);
             Variable *variable = findVar(name);
             if (!variable) {
-                cout << "Invalid operation\n";
+                output += "Invalid operation\n";
                 continue;
             }
             if (variable->type == "int") {
                 long long number;
-                if (!parseIntStrict(valueToken, number)) {
-                    cout << "Invalid operation\n";
+                if (!parseIntStrict(token, number)) {
+                    output += "Invalid operation\n";
                     continue;
                 }
                 variable->value.intValue += number;
                 variable->value.isString = false;
             } else {
                 string appended;
-                if (!parseQuotedString(valueToken, appended)) {
-                    cout << "Invalid operation\n";
+                if (!parseQuotedString(token, appended)) {
+                    output += "Invalid operation\n";
                     continue;
                 }
                 variable->value.stringValue += appended;
@@ -185,5 +231,6 @@ int main() {
         }
     }
 
+    cout << output;
     return 0;
 }
