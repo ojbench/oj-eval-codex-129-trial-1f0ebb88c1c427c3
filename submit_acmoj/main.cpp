@@ -31,11 +31,12 @@ static inline bool parseIntStrict(const string &token, long long &value) {
     return true;
 }
 
-static inline string unquote(const string &token) {
-    if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
-        return token.substr(1, token.size() - 2);
+static inline bool parseQuotedString(const string &token, string &value) {
+    if (token.size() < 2 || token.front() != '"' || token.back() != '"') {
+        return false;
     }
-    return token;
+    value = token.substr(1, token.size() - 2);
+    return true;
 }
 
 int main() {
@@ -84,7 +85,11 @@ int main() {
             string type, name;
             ss >> type >> name;
             string valueToken;
-            getline(ss >> ws, valueToken);
+            if (type == "string") {
+                getline(ss >> ws, valueToken);
+            } else {
+                ss >> valueToken;
+            }
             Variable variable;
             variable.type = type;
             if (type == "int") {
@@ -96,8 +101,11 @@ int main() {
                 variable.value.isString = false;
                 variable.value.intValue = number;
             } else if (type == "string") {
+                if (!parseQuotedString(valueToken, variable.value.stringValue)) {
+                    cout << "Invalid operation\n";
+                    continue;
+                }
                 variable.value.isString = true;
-                variable.value.stringValue = unquote(valueToken);
             } else {
                 cout << "Invalid operation\n";
                 continue;
@@ -165,7 +173,12 @@ int main() {
                 variable->value.intValue += number;
                 variable->value.isString = false;
             } else {
-                variable->value.stringValue += unquote(valueToken);
+                string appended;
+                if (!parseQuotedString(valueToken, appended)) {
+                    cout << "Invalid operation\n";
+                    continue;
+                }
+                variable->value.stringValue += appended;
                 variable->value.isString = true;
             }
             continue;
